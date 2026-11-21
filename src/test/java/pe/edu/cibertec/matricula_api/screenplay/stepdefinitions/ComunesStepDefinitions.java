@@ -1,3 +1,4 @@
+
 package pe.edu.cibertec.matricula_api.screenplay.stepdefinitions;
 
 import io.cucumber.java.en.And;
@@ -24,16 +25,23 @@ public class ComunesStepDefinitions {
         theActorCalled(nombre).whoCan(CallAnApi.at(baseUrl));
     }
 
-
-    @Then("el codigo de respuesta es {int}")
+    @Then("^el c[oó]digo de respuesta es (\\d+)$")
     public void elCodigoDeRespuestaEsInt(int status) {
-        theActorInTheSpotlight().should(seeThat(LaRespuesta.codigoDeEstado(), equalTo(status)));
+        theActorInTheSpotlight().should(
+                seeThat(
+                        LaRespuesta.codigoDeEstado(),
+                        equalTo(status)
+                )
+        );
     }
 
-    @And("el codigo de error es {string}")
+    @And("^el c[oó]digo de error es \"([^\"]*)\"$")
     public void elCodigoDeErrorEsString(String codigo) {
-        theActorInTheSpotlight().should(seeThat(LaRespuesta.campo("codigo"), equalTo(codigo)));
+        theActorInTheSpotlight().should(
+                seeThat(
+                        LaRespuesta.campo("codigo"),
+                        equalTo(codigo)
+                )
+        );
     }
-
-
 }

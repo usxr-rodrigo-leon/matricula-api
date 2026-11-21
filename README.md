@@ -562,3 +562,307 @@ Se comprobó que la API realiza correctamente la rotación de refresh tokens, in
 
 **Resultado final: CORRECTO – 4 escenarios aprobados, 0 fallos y BUILD SUCCESS.**
 
+
+# Pregunta 3: Calificaciones e historial académico con Serenity Screenplay
+
+## 1. Objetivo
+
+Validar el registro de calificaciones de los alumnos mediante pruebas automatizadas con Cucumber, Gherkin, Serenity BDD, Screenplay y Rest Assured.
+
+Se comprueba que un docente pueda registrar notas en matrículas pagadas de los cursos que tiene asignados, que el sistema determine la condición del alumno y que el historial académico actualice correctamente los créditos aprobados y el promedio ponderado.
+
+**Alumno de prueba:**
+
+| Campo | Valor |
+|---|---|
+| Código | `i202610005` |
+| Nombre | Rosa Medina |
+| Carrera | CI |
+
+**Docentes de prueba:**
+
+| Código | Nombre | Curso PI5620 |
+|---|---|---|
+| D0001 | Marco Salazar | Sí |
+| D0002 | Lucía Paredes | No |
+
+**Curso evaluado:**
+
+| Campo | Valor |
+|---|---|
+| Código | `PI5620` |
+| Nombre | Proyecto Integrador |
+| Créditos | 6 |
+| Nota mínima aprobatoria | 13 |
+
+---
+
+## 2. Escenario 1: Docente registra nota e historial se actualiza
+
+**Objetivo:** comprobar que el docente autorizado pueda registrar una calificación y que el historial académico refleje los resultados actualizados.
+
+**Endpoint para registrar la nota:**
+
+`PATCH /api/matriculas/{id}/nota`
+
+**Request para la nota 14:**
+
+```json
+{
+  "nota": 14
+}
+```
+
+**Resultado:** HTTP `200 OK`.
+
+La API devuelve la matrícula actualizada con la siguiente información:
+
+```json
+{
+  "id": 2,
+  "codigoAlumno": "i202610005",
+  "codigoCurso": "PI5620",
+  "periodo": "2026-2",
+  "creditos": 6,
+  "estado": "PAGADA",
+  "nota": 14,
+  "condicion": "APROBADO"
+}
+```
+
+### Consultar historial académico
+
+**Endpoint:**
+
+`GET /api/alumnos/i202610005/historial`
+
+**Resultado esperado:**
+
+| Indicador | Resultado |
+|---|---:|
+| Créditos aprobados | 13 |
+| Promedio ponderado | 14.77 |
+| Condición de PI5620 | APROBADO |
+
+**Cálculo del promedio ponderado:**
+
+Se consideran las calificaciones de los tres cursos con nota registrada:
+
+- Análisis y Diseño de Sistemas: 16, con 3 créditos.
+- Lenguaje de Programación II: 15, con 4 créditos.
+- Proyecto Integrador: 14, con 6 créditos.
+
+```text
+Promedio = (16 × 3 + 15 × 4 + 14 × 6) / 13
+
+Promedio = (48 + 60 + 84) / 13
+
+Promedio = 192 / 13
+
+Promedio = 14.77
+```
+
+Los 13 créditos corresponden a cursos aprobados.
+
+### Segunda ejecución: nota 12,5
+
+Se evalúa una segunda calificación para comprobar que el sistema identifique una nota desaprobatoria.
+
+**Request:**
+
+```json
+{
+  "nota": 12.5
+}
+```
+
+**Resultado esperado según la regla de negocio:** HTTP `200 OK`, con condición `DESAPROBADO`.
+
+| Indicador | Resultado esperado |
+|---|---:|
+| Créditos aprobados | 7 |
+| Promedio ponderado | 14.08 |
+| Condición de PI5620 | DESAPROBADO |
+
+**Cálculo del promedio ponderado:**
+
+```text
+Promedio = (16 × 3 + 15 × 4 + 12.5 × 6) / 13
+
+Promedio = (48 + 60 + 75) / 13
+
+Promedio = 183 / 13
+
+Promedio = 14.08
+```
+
+El promedio ponderado considera los créditos de todos los cursos que tienen calificación registrada, mientras que los créditos aprobados únicamente consideran los cursos con nota aprobatoria.
+
+---
+
+## 3. Escenario 2: Docente que no dicta el curso intenta registrar una nota
+
+**Objetivo:** comprobar que un docente no pueda calificar una matrícula de un curso que no tiene asignado.
+
+El docente `D0002` intenta registrar una nota en el curso `PI5620`, que pertenece al docente `D0001`.
+
+**Endpoint:**
+
+`PATCH /api/matriculas/2/nota`
+
+**Request:**
+
+```json
+{
+  "nota": 16
+}
+```
+
+**Resultado:** HTTP `403 Forbidden`.
+
+**Response:**
+
+```json
+{
+  "detail": "No tiene permisos sobre este recurso",
+  "instance": "/api/matriculas/2/nota",
+  "status": 403,
+  "title": "Forbidden",
+  "codigo": "ACCESO_DENEGADO"
+}
+```
+
+**Conclusión:** la API valida que el docente tenga asignado el curso antes de permitir el registro de una calificación.
+
+---
+
+## 4. Escenario 3: No se puede calificar una matrícula no pagada
+
+**Objetivo:** comprobar que el sistema impida registrar notas en matrículas que todavía no han sido pagadas.
+
+La alumna Rosa Medina tiene una matrícula registrada, pero no pagada, en el curso `PS5511`.
+
+**Endpoint:**
+
+`PATCH /api/matriculas/3/nota`
+
+**Request:**
+
+```json
+{
+  "nota": 16
+}
+```
+
+**Resultado:** HTTP `409 Conflict`.
+
+**Response:**
+
+```json
+{
+  "detail": "Solo se califican matrículas pagadas",
+  "instance": "/api/matriculas/3/nota",
+  "status": 409,
+  "title": "Conflict",
+  "codigo": "MATRICULA_NO_PAGADA"
+}
+```
+
+**Conclusión:** la API impide registrar calificaciones cuando el estado de la matrícula no es `PAGADA`.
+
+---
+
+## 5. Implementación con Serenity Screenplay
+
+Para automatizar los escenarios se implementaron los siguientes componentes:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `calificaciones.feature` | Define los escenarios en Gherkin español. |
+| `CalificacionStepDefinitions.java` | Implementa los pasos de Cucumber. |
+| `ObtenerMatricula.java` | Consulta las matrículas del alumno y obtiene dinámicamente el identificador. |
+| `CalificarMatricula.java` | Registra la nota mediante PATCH. |
+| `ConsultarHistorial.java` | Consulta el historial académico del alumno. |
+| `ElHistorial.java` | Question para consultar créditos aprobados, promedio y condición. |
+| `CalificacionesTestSuite.java` | Ejecuta la suite de pruebas de calificaciones. |
+
+Los tokens de autenticación se almacenan en la memoria de cada Actor mediante `remember()` y se recuperan con `recall()`.
+
+El identificador de la matrícula no se encuentra fijado en el código: se obtiene dinámicamente consultando las matrículas del alumno y filtrando por curso y estado.
+
+---
+
+## 6. Ejecución de pruebas
+
+Para ejecutar los escenarios automatizados:
+
+```powershell
+.\mvnw.cmd clean test -Dtest=CalificacionesTestSuite
+```
+
+### Resultados de la ejecución
+
+En la ejecución realizada se obtuvieron los siguientes resultados:
+
+| Escenario | Resultado |
+|---|---|
+| Registrar nota 14 y actualizar historial | Correcto |
+| Registrar nota 12.5 y actualizar historial | Fallido: HTTP 400 |
+| Docente sin asignación intenta calificar | Correcto: HTTP 403 |
+| Calificar matrícula no pagada | Correcto: HTTP 409 |
+
+**Resultado de Maven:**
+
+```text
+Tests run: 4
+Failures: 1
+Errors: 0
+Skipped: 0
+
+BUILD FAILURE
+```
+
+### Análisis del caso de la nota 12.5
+
+Durante la ejecución se detectó que el valor `12.5` fue interpretado incorrectamente por la configuración regional española de Cucumber.
+
+La API recibió un valor superior al máximo permitido de 20 y respondió:
+
+```json
+{
+  "detail": "Datos de entrada inválidos",
+  "instance": "/api/matriculas/2/nota",
+  "status": 400,
+  "title": "Bad Request",
+  "codigo": "DATOS_INVALIDOS",
+  "errores": {
+    "nota": "debe ser menor que o igual a 20.0"
+  }
+}
+```
+
+Por ello, se debe utilizar la notación decimal española `12,5` en la tabla de ejemplos de Gherkin para que Cucumber interprete correctamente el valor decimal.
+
+La ejecución con `12.5` se conserva como evidencia del problema detectado. La corrección debe verificarse mediante una nueva ejecución.
+
+---
+
+## 7. Evidencias
+
+Las capturas de los resultados se encuentran en la carpeta `evidencias/`:
+
+- `03-ejecucion-calificaciones.png`: ejecución de los escenarios de calificaciones.
+- `03-error-nota-decimal.png`: evidencia de la respuesta HTTP 400 al enviar la nota `12.5`.
+- `03-reporte-serenity.png`: reporte generado por Serenity BDD.
+
+El reporte HTML se genera en:
+
+`target/site/serenity/index.html`
+
+Para abrirlo:
+
+```powershell
+start .\target\site\serenity\index.html
+```
+
+**Conclusión:** se implementaron las pruebas automatizadas para validar el registro de calificaciones, los permisos de los docentes, la restricción de matrículas no pagadas y la actualización del historial académico. La ejecución permitió identificar un problema de interpretación decimal que debe corregirse y verificarse nuevamente.
