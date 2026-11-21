@@ -605,6 +605,8 @@ Se comprueba que un docente pueda registrar notas en matrículas pagadas de los 
 
 `PATCH /api/matriculas/{id}/nota`
 
+El identificador de la matrícula se obtiene dinámicamente mediante `GET /api/matriculas`, utilizando el token de autenticación de la alumna.
+
 **Request para la nota 14:**
 
 ```json
@@ -630,13 +632,15 @@ La API devuelve la matrícula actualizada con la siguiente información:
 }
 ```
 
+*Nota: el identificador `2` corresponde a la ejecución documentada. La prueba automatizada obtiene el ID dinámicamente.*
+
 ### Consultar historial académico
 
 **Endpoint:**
 
 `GET /api/alumnos/i202610005/historial`
 
-**Resultado esperado:**
+**Resultado obtenido:**
 
 | Indicador | Resultado |
 |---|---:|
@@ -664,11 +668,15 @@ Promedio = 14.77
 
 Los 13 créditos corresponden a cursos aprobados.
 
+**Resultado: CORRECTO – HTTP 200, condición APROBADO.**
+
 ### Segunda ejecución: nota 12,5
 
 Se evalúa una segunda calificación para comprobar que el sistema identifique una nota desaprobatoria.
 
-**Request:**
+En el archivo `calificaciones.feature` se utiliza la notación decimal española `12,5`.
+
+**Request enviado a la API:**
 
 ```json
 {
@@ -676,9 +684,26 @@ Se evalúa una segunda calificación para comprobar que el sistema identifique u
 }
 ```
 
-**Resultado esperado según la regla de negocio:** HTTP `200 OK`, con condición `DESAPROBADO`.
+**Resultado:** HTTP `200 OK`, con condición `DESAPROBADO`.
 
-| Indicador | Resultado esperado |
+La API devuelve los siguientes campos de la matrícula actualizada:
+
+```json
+{
+  "id": 2,
+  "codigoAlumno": "i202610005",
+  "codigoCurso": "PI5620",
+  "periodo": "2026-2",
+  "creditos": 6,
+  "estado": "PAGADA",
+  "nota": 12.5,
+  "condicion": "DESAPROBADO"
+}
+```
+
+**Resultado del historial académico:**
+
+| Indicador | Resultado |
 |---|---:|
 | Créditos aprobados | 7 |
 | Promedio ponderado | 14.08 |
@@ -697,6 +722,10 @@ Promedio = 14.08
 ```
 
 El promedio ponderado considera los créditos de todos los cursos que tienen calificación registrada, mientras que los créditos aprobados únicamente consideran los cursos con nota aprobatoria.
+
+Por ello, los seis créditos del curso Proyecto Integrador no se consideran aprobados cuando la nota es `12,5`.
+
+**Resultado: CORRECTO – HTTP 200, condición DESAPROBADO.**
 
 ---
 
@@ -732,7 +761,11 @@ El docente `D0002` intenta registrar una nota en el curso `PI5620`, que pertenec
 }
 ```
 
+**Validación:** se comprueba que el código HTTP sea `403` y que el campo `codigo` tenga el valor `ACCESO_DENEGADO`.
+
 **Conclusión:** la API valida que el docente tenga asignado el curso antes de permitir el registro de una calificación.
+
+**Resultado: CORRECTO – HTTP 403.**
 
 ---
 
@@ -768,7 +801,11 @@ La alumna Rosa Medina tiene una matrícula registrada, pero no pagada, en el cur
 }
 ```
 
+**Validación:** se comprueba que el código HTTP sea `409` y que el campo `codigo` tenga el valor `MATRICULA_NO_PAGADA`.
+
 **Conclusión:** la API impide registrar calificaciones cuando el estado de la matrícula no es `PAGADA`.
+
+**Resultado: CORRECTO – HTTP 409.**
 
 ---
 
@@ -790,6 +827,18 @@ Los tokens de autenticación se almacenan en la memoria de cada Actor mediante `
 
 El identificador de la matrícula no se encuentra fijado en el código: se obtiene dinámicamente consultando las matrículas del alumno y filtrando por curso y estado.
 
+**Consulta utilizada para obtener la matrícula pagada:**
+
+`GET /api/matriculas?alumno=i202610005&curso=PI5620&estado=PAGADA`
+
+**Consulta utilizada para obtener la matrícula no pagada:**
+
+`GET /api/matriculas?alumno=i202610005&curso=PS5511&estado=REGISTRADA`
+
+También se valida que la respuesta del historial académico cumpla con el esquema JSON:
+
+`src/test/resources/schemas/historial.json`
+
 ---
 
 ## 6. Ejecución de pruebas
@@ -806,8 +855,8 @@ En la ejecución realizada se obtuvieron los siguientes resultados:
 
 | Escenario | Resultado |
 |---|---|
-| Registrar nota 14 y actualizar historial | Correcto |
-| Registrar nota 12.5 y actualizar historial | Fallido: HTTP 400 |
+| Registrar nota 14 y actualizar historial | Correcto: HTTP 200 |
+| Registrar nota 12,5 y actualizar historial | Correcto: HTTP 200 |
 | Docente sin asignación intenta calificar | Correcto: HTTP 403 |
 | Calificar matrícula no pagada | Correcto: HTTP 409 |
 
@@ -815,18 +864,30 @@ En la ejecución realizada se obtuvieron los siguientes resultados:
 
 ```text
 Tests run: 4
-Failures: 1
+Failures: 0
 Errors: 0
 Skipped: 0
 
-BUILD FAILURE
+BUILD SUCCESS
 ```
+
+**Fecha de ejecución:** 21/11/2026.
+
+Los cuatro escenarios fueron ejecutados correctamente mediante Cucumber y Serenity BDD.
 
 ### Análisis del caso de la nota 12.5
 
-Durante la ejecución se detectó que el valor `12.5` fue interpretado incorrectamente por la configuración regional española de Cucumber.
+Durante el desarrollo se identificó la importancia de utilizar correctamente la notación decimal en los escenarios de Cucumber.
 
-La API recibió un valor superior al máximo permitido de 20 y respondió:
+El archivo `calificaciones.feature` utiliza la configuración:
+
+```gherkin
+# language: es
+```
+
+En una ejecución anterior se utilizó el valor `12.5` directamente en Gherkin y se observó una respuesta HTTP `400 Bad Request`, con el código de error `DATOS_INVALIDOS`.
+
+La respuesta de error documentada fue:
 
 ```json
 {
@@ -841,19 +902,30 @@ La API recibió un valor superior al máximo permitido de 20 y respondió:
 }
 ```
 
-Por ello, se debe utilizar la notación decimal española `12,5` en la tabla de ejemplos de Gherkin para que Cucumber interprete correctamente el valor decimal.
+El problema se relacionó con la interpretación del separador decimal en la configuración regional española de Cucumber.
 
-La ejecución con `12.5` se conserva como evidencia del problema detectado. La corrección debe verificarse mediante una nueva ejecución.
+Por ello, se utilizó la notación `12,5` en la tabla de ejemplos de Gherkin, mientras que la petición JSON mantiene el formato numérico `12.5`.
+
+Después de realizar esta corrección se ejecutaron nuevamente los cuatro escenarios.
+
+**Resultado de la ejecución corregida:**
+
+```text
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+La ejecución final confirmó que la nota decimal se registra correctamente, que la condición académica es `DESAPROBADO` y que el historial actualiza los créditos aprobados y el promedio ponderado.
 
 ---
 
-## 7. Evidencias
+## 7. Reporte Serenity BDD
 
-Las capturas de los resultados se encuentran en la carpeta `evidencias/`:
+El reporte de Serenity BDD se puede generar mediante el siguiente comando:
 
-- `03-ejecucion-calificaciones.png`: ejecución de los escenarios de calificaciones.
-- `03-error-nota-decimal.png`: evidencia de la respuesta HTTP 400 al enviar la nota `12.5`.
-- `03-reporte-serenity.png`: reporte generado por Serenity BDD.
+```powershell
+.\mvnw.cmd serenity:aggregate
+```
 
 El reporte HTML se genera en:
 
@@ -865,4 +937,14 @@ Para abrirlo:
 start .\target\site\serenity\index.html
 ```
 
-**Conclusión:** se implementaron las pruebas automatizadas para validar el registro de calificaciones, los permisos de los docentes, la restricción de matrículas no pagadas y la actualización del historial académico. La ejecución permitió identificar un problema de interpretación decimal que debe corregirse y verificarse nuevamente.
+Este reporte permite consultar los escenarios automatizados, los pasos ejecutados y los resultados de las validaciones.
+
+---
+
+**Conclusión:** se implementaron y ejecutaron correctamente las pruebas automatizadas para validar el registro de calificaciones, los permisos de los docentes, la restricción de matrículas no pagadas y la actualización del historial académico.
+
+Se verificó que el sistema calcula correctamente el promedio ponderado, determina la condición de aprobación y actualiza los créditos aprobados.
+
+También se comprobó que la notación decimal española `12,5` permite ejecutar correctamente el escenario correspondiente.
+
+**Resultado final: CORRECTO – 4 escenarios aprobados, 0 fallos, 0 errores y BUILD SUCCESS.**
